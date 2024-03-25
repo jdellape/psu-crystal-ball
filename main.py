@@ -1,6 +1,9 @@
+import os
 import logging
 import requests
 from bs4 import BeautifulSoup
+
+SMS_SENDER_ADDRESS = os.environ["SMS_SENDER_ADDRESS"]
 
 def get_player_info(ul):
     name_html = ul.find("li", class_="name")
@@ -56,7 +59,7 @@ def main():
     # Grab the latest prediction
     website_latest_prediction = data[0]['prediction_id']
     logger.info(f"Latest prediction id from web page: {website_latest_prediction}")
-    print(website_latest_prediction)
+    logger.info(f"SMS sender address: {SMS_SENDER_ADDRESS}")
 
 if __name__ == "__main__":
     main()

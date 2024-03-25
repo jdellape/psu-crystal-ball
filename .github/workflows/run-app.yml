@@ -3,6 +3,9 @@ name: Run Python Script
 on:
   workflow_dispatch
 
+env:
+  SMS_SENDER_ADDRESS: ${{ secrets.SMS_SENDER_ADDRESS }}
+
 jobs:
   run-app:
     runs-on: ubuntu-latest
