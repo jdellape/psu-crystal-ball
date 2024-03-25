@@ -1,6 +1,16 @@
+import os
 import logging
 import requests
 from bs4 import BeautifulSoup
+import gspread
+import pandas as pd
+from etext import send_sms_via_email
+
+# Auth vars for sending text
+SMS_SENDER_ADDRESS = os.environ["SMS_SENDER_ADDRESS"]
+SMS_SENDER_PASSWORD = os.environ["SMS_SENDER_PASSWORD"]
+SMS_RECIPIENT_PHONE_NUMBER = os.environ["SMS_RECIPIENT_PHONE_NUMBER"]
+SMS_PROVIDER = os.environ["SMS_PROVIDER"]
 
 def get_player_info(ul):
     name_html = ul.find("li", class_="name")
@@ -56,7 +66,9 @@ def main():
     # Grab the latest prediction
     website_latest_prediction = data[0]['prediction_id']
     logger.info(f"Latest prediction id from web page: {website_latest_prediction}")
-    print(website_latest_prediction)
+    send_sms_via_email(SMS_RECIPIENT_PHONE_NUMBER, "this is a test from github actions", SMS_PROVIDER,
+                            (SMS_SENDER_ADDRESS, SMS_SENDER_PASSWORD),
+                            subject="Crystal Ball Alert")
 
 if __name__ == "__main__":
     main()
