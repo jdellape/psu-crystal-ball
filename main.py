@@ -1,12 +1,6 @@
-import os
+import logging
 import requests
 from bs4 import BeautifulSoup
-import gspread
-import pandas as pd
-from dotenv import load_dotenv
-from etext import send_sms_via_email
-
-load_dotenv()
 
 def get_player_info(ul):
     name_html = ul.find("li", class_="name")
@@ -28,18 +22,17 @@ def get_prediction_info(ul):
         pass
     prediction_date = prediction_html.find('span', class_="prediction-date").text.strip()
     return (prediction_team, prediction_date)
-
-
-def get_recent_predictions(new_df, old_df):
-    df = pd.concat([new_df, old_df]).drop_duplicates(keep=False)
-    records = df.to_dict('records')
-    return records
-
 def main():
+    # Configure logging
+    log_level = logging.INFO
+    logger = logging.getLogger()
+    fmt_string = "[%(levelname)s]\t%(asctime)s.%(msecs)dZ at line %(lineno)d: %(message)s"
+    logging.basicConfig(level=log_level, format=fmt_string, datefmt="%Y-%m-%dT%H:%M:%S")
 
     url = 'https://247sports.com/college/penn-state/Season/2025-Football/CurrentTargetPredictions/'
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36'}
 
+    logger.info(f"Getting html contents from {url}...")
     # Scrape the web page and parse out what I want
     web_page = requests.get(url, headers=headers)
     soup = BeautifulSoup(web_page.content, "html.parser")
@@ -48,6 +41,7 @@ def main():
 
     data = []
 
+    logger.info("Parsing data from html...")
     # Items I want to extract: target name, link to target page, predicted by, prediction team, prediction time
     for target_html in target_html_list:
         ul = target_html.find('ul')
@@ -61,36 +55,8 @@ def main():
 
     # Grab the latest prediction
     website_latest_prediction = data[0]['prediction_id']
-
-    new_df = pd.DataFrame(data)
-
-    # Connect to google sheet as data source
-
-    gc = gspread.service_account(filename="creds.json")
-
-    worksheet = gc.open('psu-crystal-ball').sheet1
-
-    old_df = pd.DataFrame(worksheet.get_all_records())
-
-    worksheet_latest_prediction = list(old_df['prediction_id'])[0]
-
-    # This is what we want to send in a notification to alert subscriber to the new crystal ball pick(S)
-    if worksheet_latest_prediction != website_latest_prediction:
-        # Get the rows in new_df not in old_df
-        notification_records = get_recent_predictions(new_df, old_df)
-        for record in notification_records:
-            message = f"{record['predicted_by']} predicts {record['player_name']} will commit to {record['predicted_team']}"
-            send_sms_via_email(os.getenv('SMS_RECIPIENT_PHONE_NUMBER'), message, os.getenv('SMS_PROVIDER'),
-                            (os.getenv('SMS_SENDER_ADDRESS'),os.getenv('SMS_SENDER_PASSWORD')),
-                            subject="Crystal Ball Alert")
-            message = f"\n{record['player_url']}"
-            send_sms_via_email(os.getenv('SMS_RECIPIENT_PHONE_NUMBER'), message, os.getenv('SMS_PROVIDER'),
-                            (os.getenv('SMS_SENDER_ADDRESS'),os.getenv('SMS_SENDER_PASSWORD')),
-                            subject="247 Profile")
-
-    # Clear the worksheet and overwrite with current scrape
-    worksheet.clear()
-    worksheet.update([new_df.columns.values.tolist()] + new_df.values.tolist())
+    logger.info(f"Latest prediction id from web page: {website_latest_prediction}")
+    print(website_latest_prediction)
 
 if __name__ == "__main__":
     main()
