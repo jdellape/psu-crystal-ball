@@ -2,8 +2,30 @@ import os
 import logging
 import requests
 from bs4 import BeautifulSoup
+import gspread
+import pandas as pd
+from etext import send_sms_via_email
 
+# Auth for connecting to google sheets
+GSPREAD_CREDS = {
+    "type": "service_account",
+    "project_id": os.environ["GSPREAD_PROJECT_ID"],
+    "private_key_id": os.environ["GSPREAD_PRIVATE_KEY_ID"],
+    "private_key": os.environ["GSPREAD_PRIVATE_KEY"],
+    "client_email": os.environ["GSPREAD_CLIENT_EMAIL"],
+    "client_id": os.environ["GSPREAD_CLIENT_ID"],
+    "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+    "token_uri": "https://oauth2.googleapis.com/token",
+    "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+    "client_x509_cert_url": os.environ["GSPREAD_CLIENT_X509_CERT_URL"],
+    "universe_domain": "googleapis.com"
+}
+
+# Auth vars for sending text
 SMS_SENDER_ADDRESS = os.environ["SMS_SENDER_ADDRESS"]
+SMS_SENDER_PASSWORD = os.environ["SMS_SENDER_PASSWORD"]
+SMS_RECIPIENT_PHONE_NUMBER = os.environ["SMS_RECIPIENT_PHONE_NUMBER"]
+SMS_PROVIDER = os.environ["SMS_PROVIDER"]
 
 def get_player_info(ul):
     name_html = ul.find("li", class_="name")
@@ -25,6 +47,12 @@ def get_prediction_info(ul):
         pass
     prediction_date = prediction_html.find('span', class_="prediction-date").text.strip()
     return (prediction_team, prediction_date)
+
+def get_recent_predictions(new_df, old_df):
+    df = pd.concat([new_df, old_df]).drop_duplicates(keep=False)
+    records = df.to_dict('records')
+    return records
+
 def main():
     # Configure logging
     log_level = logging.INFO
@@ -56,10 +84,40 @@ def main():
                     'predicted_team':prediction_team,
                     'prediction_id': f"{target_name}_{predicted_by_name}_{prediction_date}_{prediction_team}"})
 
-    # Grab the latest prediction
+    # Grab the latest prediction and log it
     website_latest_prediction = data[0]['prediction_id']
     logger.info(f"Latest prediction id from web page: {website_latest_prediction}")
-    logger.info(f"SMS sender address: {SMS_SENDER_ADDRESS}")
+
+    new_df = pd.DataFrame(data)
+
+    # Connect to google sheet as data source
+    logger.info("Connecting to google sheet data source...")
+    gc = gspread.service_account_from_dict(GSPREAD_CREDS)
+
+    worksheet = gc.open('psu-crystal-ball').sheet1
+
+    old_df = pd.DataFrame(worksheet.get_all_records())
+
+    worksheet_latest_prediction = list(old_df['prediction_id'])[0]
+    logger.info(f"Latest prediction id stored in google sheet: {worksheet_latest_prediction}")
+
+    # This is what we want to send in a notification to alert subscriber to the new crystal ball pick(S)
+    if worksheet_latest_prediction != website_latest_prediction:
+        # Get the rows in new_df not in old_df
+        notification_records = get_recent_predictions(new_df, old_df)
+        for record in notification_records:
+            message = f"{record['predicted_by']} predicts {record['player_name']} will commit to {record['predicted_team']}"
+            send_sms_via_email(SMS_RECIPIENT_PHONE_NUMBER, message, SMS_PROVIDER,
+                            (SMS_SENDER_ADDRESS, SMS_SENDER_PASSWORD),
+                            subject="Crystal Ball Alert")
+            message = f"\n{record['player_url']}"
+            send_sms_via_email(SMS_RECIPIENT_PHONE_NUMBER, message, SMS_PROVIDER,
+                            (SMS_SENDER_ADDRESS, SMS_SENDER_PASSWORD),
+                            subject="247 Profile")
+
+    # Clear the worksheet and overwrite with current scrape
+    worksheet.clear()
+    worksheet.update([new_df.columns.values.tolist()] + new_df.values.tolist())
 
 if __name__ == "__main__":
     main()
