@@ -3,9 +3,6 @@ cachetools==5.3.3
 certifi==2024.2.2
 charset-normalizer==3.3.2
 etext==0.0.1
-google-auth==2.29.0
-google-auth-oauthlib==1.2.0
-gspread==6.0.2
 idna==3.6
 numpy==1.26.4
 oauthlib==3.2.2
